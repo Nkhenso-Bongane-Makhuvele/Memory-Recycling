@@ -1,0 +1,291 @@
+import React, { useState, useEffect } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, FlatList } from 'react-native';
+
+const items = [
+  { id: '1', name: 'Plastic Bottle', type: 'recyclable' },
+  { id: '2', name: 'Paper Bag', type: 'recyclable' },
+  { id: '3', name: 'Aluminum Can', type: 'recyclable' },
+  { id: '4', name: 'Glass Jar', type: 'recyclable' },
+  { id: '5', name: 'Pizza Box', type: 'contaminant' },
+  { id: '6', name: 'Plastic Wrapper', type: 'contaminant' },
+];
+
+const shuffleArray = (array) => {
+  return array.sort(() => Math.random() - 0.5);
+};
+
+const HomeScreen = ({ onStart, onViewLeaderboard }) => {
+  return (
+    <View style={styles.container}>
+      <Text style={styles.title}>Recycling Challenge</Text>
+      <Text style={styles.introText}>
+        Test your memory and learn about recyclable materials while helping to keep our planet clean!
+      </Text>
+      <TouchableOpacity style={styles.startButton} onPress={onStart}>
+        <Text style={styles.buttonText}>Start Recycling</Text>
+      </TouchableOpacity>
+      <TouchableOpacity style={styles.leaderboardButton} onPress={onViewLeaderboard}>
+        <Text style={styles.buttonText}>View Leaderboard</Text>
+      </TouchableOpacity>
+    </View>
+  );
+};
+
+const GameScreen = ({ onComplete }) => {
+  const [cards, setCards] = useState([]);
+  const [flippedIndices, setFlippedIndices] = useState([]);
+  const [matchedPairs, setMatchedPairs] = useState([]);
+  const [score, setScore] = useState(0);
+  const [timeLeft, setTimeLeft] = useState(60);
+  const [isGameOver, setIsGameOver] = useState(false);
+  const [isRushMode, setIsRushMode] = useState(false);
+
+  useEffect(() => {
+    const shuffledCards = shuffleArray([...items, ...items]);
+    setCards(shuffledCards);
+    
+    const timer = setInterval(() => {
+      setTimeLeft((prev) => {
+        if (prev <= 0) {
+          clearInterval(timer);
+          setIsGameOver(true);
+          return 0;
+        }
+        return prev - 1;
+      });
+
+      if (timeLeft <= 15 && !isRushMode) {
+        setIsRushMode(true);
+      }
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, []);
+
+  const handleCardPress = (index) => {
+    if (flippedIndices.length === 2 || flippedIndices.includes(index) || isGameOver) {
+      return;
+    }
+    setFlippedIndices((prev) => [...prev, index]);
+
+    if (flippedIndices.length === 1) {
+      const firstCard = cards[flippedIndices[0]];
+      const secondCard = cards[index];
+
+      if (firstCard.id === secondCard.id) {
+        setMatchedPairs((prev) => [...prev, firstCard.id]);
+        setScore((prev) => prev + 10);
+      } else {
+        if (firstCard.type === 'contaminant' || secondCard.type === 'contaminant') {
+          setScore((prev) => prev - 5);
+        }
+      }
+
+      setTimeout(() => {
+        setFlippedIndices([]);
+      }, isRushMode ? 500 : 1000);
+    }
+  };
+
+  useEffect(() => {
+    if (isGameOver) {
+      onComplete(score, 60 - timeLeft);
+    }
+  }, [isGameOver]);
+
+  return (
+    <View style={styles.container}>
+      <Text style={styles.title}>Recycling Challenge</Text>
+      <Text style={styles.score}>Score: {score}</Text>
+      <Text style={styles.timer}>Time Left: {timeLeft}s</Text>
+      {isRushMode && <Text style={styles.rushMode}>Recycling Rush Mode!</Text>}
+      <FlatList
+        data={cards}
+        renderItem={({ item, index }) => (
+          <TouchableOpacity
+            style={[styles.card, flippedIndices.includes(index) || matchedPairs.includes(item.id) ? styles.flipped : {}]}
+            onPress={() => handleCardPress(index)}
+          >
+            {flippedIndices.includes(index) || matchedPairs.includes(item.id) ? (
+              <Text style={styles.cardText}>{item.name}</Text>
+            ) : (
+              <Text style={styles.cardText}>?</Text>
+            )}
+          </TouchableOpacity>
+        )}
+        numColumns={4}
+        keyExtractor={(item) => item.id}
+      />
+    </View>
+  );
+};
+
+const ResultScreen = ({ score, timeTaken, onRestart }) => {
+  return (
+    <View style={styles.container}>
+      <Text style={styles.title}>Game Over</Text>
+      <Text style={styles.resultText}>Recycling Points: {score}</Text>
+      <Text style={styles.resultText}>Time Taken: {timeTaken}s</Text>
+      <TouchableOpacity style={styles.restartButton} onPress={onRestart}>
+        <Text style={styles.buttonText}>Recycle More</Text>
+      </TouchableOpacity>
+    </View>
+  );
+};
+
+const LeaderboardScreen = ({ leaderboard, onBack }) => {
+  return (
+    <View style={styles.container}>
+      <Text style={styles.title}>Leaderboard</Text>
+      <FlatList
+        data={leaderboard}
+        renderItem={({ item, index }) => (
+          <Text style={styles.leaderboardEntry}>
+            {index + 1}. {item.name} - Score: {item.score} | Time: {item.time}s
+          </Text>
+        )}
+        keyExtractor={(item) => item.name}
+      />
+      <TouchableOpacity style={styles.restartButton} onPress={onBack}>
+        <Text style={styles.buttonText}>Back to Home</Text>
+      </TouchableOpacity>
+    </View>
+  );
+};
+
+const App = () => {
+  const [screen, setScreen] = useState('home');
+  const [score, setScore] = useState(0);
+  const [timeTaken, setTimeTaken] = useState(0);
+  const [leaderboard, setLeaderboard] = useState([]);
+
+  const randomNames = ["Alice", "Bob", "Charlie", "Diana", "Ethan", "Fiona", "George", "Hannah"];
+
+  const startGame = () => {
+    setScreen('game');
+    setScore(0);
+    setTimeTaken(0);
+  };
+
+  const completeGame = (finalScore, finalTime) => {
+    setScore(finalScore);
+    setTimeTaken(finalTime);
+    setScreen('result');
+    updateLeaderboard(finalScore, finalTime);
+  };
+
+  const restartGame = () => {
+    setScreen('home');
+    setScore(0);
+    setTimeTaken(0);
+  };
+
+  const updateLeaderboard = (finalScore, finalTime) => {
+    const randomName = randomNames[Math.floor(Math.random() * randomNames.length)];
+    const newEntry = { name: randomName, score: finalScore, time: finalTime };
+    setLeaderboard((prev) => [...prev, newEntry]);
+  };
+
+  const viewLeaderboard = () => {
+    setScreen('leaderboard');
+  };
+
+  const backToHome = () => {
+    setScreen('home');
+  };
+
+  return (
+    <>
+      {screen === 'home' && <HomeScreen onStart={startGame} onViewLeaderboard={viewLeaderboard} />}
+      {screen === 'game' && <GameScreen onComplete={completeGame} />}
+      {screen === 'result' && <ResultScreen score={score} timeTaken={timeTaken} onRestart={restartGame} />}
+      {screen === 'leaderboard' && <LeaderboardScreen leaderboard={leaderboard} onBack={backToHome} />}
+    </>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#E0F7FA',
+    padding: 20,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 20,
+  },
+  introText: {
+    textAlign: 'center',
+    marginBottom: 20,
+    paddingHorizontal: 20,
+  },
+  startButton: {
+    padding: 10,
+    backgroundColor: '#FFAB40',
+    borderRadius: 5,
+    marginBottom: 10,
+  },
+  leaderboardButton: {
+    padding: 10,
+    backgroundColor: '#42A5F5',
+    borderRadius: 5,
+  },
+  score: {
+    fontSize: 18,
+    marginBottom: 10,
+  },
+  timer: {
+    fontSize: 18,
+    marginBottom: 20,
+  },
+  rushMode: {
+    fontSize: 20,
+    color: '#D32F2F',
+    marginBottom: 20,
+  },
+  card: {
+    width: 70,
+    height: 70,
+    backgroundColor: '#B2EBF2',
+    justifyContent: 'center',
+    alignItems: 'center',
+    margin: 5,
+    borderRadius: 5,
+  },
+  flipped: {
+    backgroundColor: '#4DD0E1',
+  },
+  cardText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  restartButton: {
+    marginTop: 20,
+    padding: 10,
+    backgroundColor: '#FFAB40',
+    borderRadius: 5,
+  },
+  resultText: {
+    fontSize: 18,
+    marginBottom: 20,
+  },
+  leaderboardTitle: {
+    fontSize: 18,
+    marginBottom: 10,
+    fontWeight: 'bold',
+  },
+  leaderboardEntry: {
+    fontSize: 16,
+    marginBottom: 5,
+  },
+  buttonText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+});
+
+export default App;
